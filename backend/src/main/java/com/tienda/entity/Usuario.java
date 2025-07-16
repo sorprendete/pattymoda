@@ -34,6 +34,12 @@ public class Usuario implements UserDetails {
     @Column(name = "activo")
     private Boolean activo = true;
     
+    @Column(name = "intentos_recuperacion")
+    private Integer intentosRecuperacion = 0;
+    
+    @Column(name = "ultimo_intento_recuperacion")
+    private LocalDateTime ultimoIntentoRecuperacion;
+    
     // Constructors
     public Usuario() {
         this.fechaCreacion = LocalDateTime.now();
@@ -99,6 +105,12 @@ public class Usuario implements UserDetails {
     
     public Boolean getActivo() { return activo; }
     public void setActivo(Boolean activo) { this.activo = activo; }
+    
+    public Integer getIntentosRecuperacion() { return intentosRecuperacion; }
+    public void setIntentosRecuperacion(Integer intentosRecuperacion) { this.intentosRecuperacion = intentosRecuperacion; }
+    
+    public LocalDateTime getUltimoIntentoRecuperacion() { return ultimoIntentoRecuperacion; }
+    public void setUltimoIntentoRecuperacion(LocalDateTime ultimoIntentoRecuperacion) { this.ultimoIntentoRecuperacion = ultimoIntentoRecuperacion; }
     
     public enum Rol {
         ADMIN, VENDEDOR
