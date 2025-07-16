@@ -1,5 +1,5 @@
-// Lista de productos
-import React, { useState } from "react";
+// Lista de productos conectada al backend
+import React, { useState, useEffect } from "react";
 import {
   Plus,
   Search,
@@ -14,35 +14,62 @@ import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Modal } from "../ui/Modal";
 import { ProductForm } from "./ProductForm";
+import { ProductService } from "../../services/productService";
 
 interface Product {
   id: string;
-  name: string;
+  nombre: string;
   sku: string;
-  category: string;
-  price: number;
+  descripcion: string;
+  marca: string;
+  precio: number;
+  costo: number;
   stock: number;
-  minStock: number;
-  image: string;
-  status: "active" | "inactive";
+  stockMinimo: number;
+  imagen: string;
+  categoria: {
+    id: string;
+    nombre: string;
+  };
+  activo: boolean;
+  fechaCreacion: string;
 }
 
 export function ProductList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Elimina cualquier array de productos mock, solo usa datos del backend...
-  const products: Product[] = []; // Aquí se debe implementar la lógica para obtener los productos del backend
+  // Cargar productos desde el backend
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  const loadProducts = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await ProductService.getAllProducts();
+      setProducts(response.data || []);
+    } catch (err: any) {
+      setError("Error al cargar productos: " + (err.message || "Error desconocido"));
+      console.error("Error loading products:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredProducts = products.filter(
     (product) =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.category.toLowerCase().includes(searchTerm.toLowerCase())
+      product.categoria.nombre.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const lowStockProducts = products.filter((p) => p.stock <= p.minStock);
+  const lowStockProducts = products.filter((p) => p.stock <= p.stockMinimo);
 
   const handleEditProduct = (product: Product) => {
     setSelectedProduct(product);
@@ -53,6 +80,49 @@ export function ProductList() {
     setSelectedProduct(null);
     setIsModalOpen(true);
   };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (window.confirm("¿Estás seguro de que deseas eliminar este producto?")) {
+      try {
+        await ProductService.deleteProduct(productId);
+        await loadProducts(); // Recargar la lista
+      } catch (err: any) {
+        alert("Error al eliminar producto: " + (err.message || "Error desconocido"));
+      }
+    }
+  };
+
+  const handleSaveProduct = async (productData: any) => {
+    try {
+      if (selectedProduct) {
+        await ProductService.updateProduct(selectedProduct.id, productData);
+      } else {
+        await ProductService.createProduct(productData);
+      }
+      setIsModalOpen(false);
+      await loadProducts(); // Recargar la lista
+    } catch (err: any) {
+      alert("Error al guardar producto: " + (err.message || "Error desconocido"));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+        <span className="ml-3 text-gray-600">Cargando productos...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-500 mb-4">{error}</div>
+        <Button onClick={loadProducts}>Reintentar</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -67,6 +137,61 @@ export function ProductList() {
         >
           Nuevo Producto
         </Button>
+      </div>
+
+      {/* Estadísticas */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="p-4">
+          <div className="flex items-center">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Package className="w-6 h-6 text-blue-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Total Productos</p>
+              <p className="text-2xl font-bold text-gray-900">{products.length}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <Package className="w-6 h-6 text-green-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Productos Activos</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {products.filter(p => p.activo).length}
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Stock Bajo</p>
+              <p className="text-2xl font-bold text-gray-900">{lowStockProducts.length}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center">
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <Package className="w-6 h-6 text-yellow-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">Valor Inventario</p>
+              <p className="text-2xl font-bold text-gray-900">
+                S/ {products.reduce((acc, p) => acc + (p.precio * p.stock), 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </Card>
       </div>
 
       {/* Alertas de Stock Bajo */}
@@ -115,9 +240,12 @@ export function ProductList() {
           >
             <div className="relative">
               <img
-                src={product.image}
-                alt={product.name}
+                src={product.imagen || 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=300&h=200&dpr=2'}
+                alt={product.nombre}
                 className="w-full h-48 object-cover rounded-t-xl"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=300&h=200&dpr=2';
+                }}
               />
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
                 <Button
@@ -128,11 +256,16 @@ export function ProductList() {
                 >
                   <Edit className="w-3 h-3" />
                 </Button>
-                <Button variant="danger" size="sm" className="shadow-lg">
+                <Button 
+                  variant="danger" 
+                  size="sm" 
+                  className="shadow-lg"
+                  onClick={() => handleDeleteProduct(product.id)}
+                >
                   <Trash2 className="w-3 h-3" />
                 </Button>
               </div>
-              {product.stock <= product.minStock && (
+              {product.stock <= product.stockMinimo && (
                 <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium">
                   Stock Bajo
                 </div>
@@ -143,26 +276,26 @@ export function ProductList() {
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
                   <h3 className="font-semibold text-gray-900 line-clamp-2">
-                    {product.name}
+                    {product.nombre}
                   </h3>
                 </div>
 
                 <div className="flex items-center justify-between text-sm text-gray-500">
                   <span>{product.sku}</span>
                   <span className="bg-gray-100 px-2 py-1 rounded text-xs">
-                    {product.category}
+                    {product.categoria.nombre}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <p className="text-xl font-bold text-gray-900">
-                    S/ {product.price}
+                    S/ {product.precio.toFixed(2)}
                   </p>
                   <div className="flex items-center space-x-1">
                     <Package className="w-4 h-4 text-gray-400" />
                     <span
                       className={`text-sm font-medium ${
-                        product.stock <= product.minStock
+                        product.stock <= product.stockMinimo
                           ? "text-red-600"
                           : "text-gray-600"
                       }`}
@@ -175,13 +308,13 @@ export function ProductList() {
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className={`h-2 rounded-full ${
-                      product.stock <= product.minStock
+                      product.stock <= product.stockMinimo
                         ? "bg-red-500"
                         : "bg-green-500"
                     }`}
                     style={{
                       width: `${Math.min(
-                        (product.stock / (product.minStock * 3)) * 100,
+                        (product.stock / (product.stockMinimo * 3)) * 100,
                         100
                       )}%`,
                     }}
@@ -193,7 +326,7 @@ export function ProductList() {
         ))}
       </div>
 
-      {filteredProducts.length === 0 && (
+      {filteredProducts.length === 0 && !loading && (
         <Card>
           <CardContent className="text-center py-12">
             <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -201,9 +334,11 @@ export function ProductList() {
               No se encontraron productos
             </h3>
             <p className="text-gray-500 mb-4">
-              Prueba con otros términos de búsqueda
+              {searchTerm ? "Prueba con otros términos de búsqueda" : "Comienza agregando tu primer producto"}
             </p>
-            <Button onClick={handleNewProduct}>Crear Primer Producto</Button>
+            <Button onClick={handleNewProduct}>
+              {searchTerm ? "Limpiar búsqueda" : "Crear Primer Producto"}
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -217,10 +352,7 @@ export function ProductList() {
       >
         <ProductForm
           product={selectedProduct}
-          onSubmit={(data) => {
-            console.log("Producto guardado:", data);
-            setIsModalOpen(false);
-          }}
+          onSubmit={handleSaveProduct}
           onCancel={() => setIsModalOpen(false)}
         />
       </Modal>

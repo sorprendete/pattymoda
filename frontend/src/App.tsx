@@ -1,4 +1,4 @@
-// Aplicación principal
+// Aplicación principal con autenticación real
 import React, { useState } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
@@ -22,13 +22,15 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [email, setEmail] = useState('admin@dpattymoda.com');
   const [password, setPassword] = useState('admin123');
+  const [loginError, setLoginError] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError('');
     try {
       await login(email, password);
-    } catch (error) {
-      console.error('Error de login:', error);
+    } catch (error: any) {
+      setLoginError(error.message || 'Error al iniciar sesión');
     }
   };
 
@@ -79,6 +81,12 @@ function App() {
                   Iniciar Sesión
                 </h2>
               </div>
+
+              {loginError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-red-600 text-sm">{loginError}</p>
+                </div>
+              )}
 
               <Input
                 label="Email"

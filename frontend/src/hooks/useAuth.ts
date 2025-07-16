@@ -1,61 +1,48 @@
-// Hook de autenticación
-import { useState, useEffect, createContext, useContext } from 'react';
+// Hook de autenticación actualizado
+import { useState, useEffect } from 'react';
 import { User } from '../types';
-import { useLocalStorage } from './useLocalStorage';
-
-interface AuthContextType {
-  user: User | null;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+import { AuthService } from '../services/authService';
 
 export function useAuthState() {
-  const [user, setUser] = useLocalStorage<User | null>('user', null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Verificar si hay un usuario logueado al cargar
+    const currentUser = AuthService.getCurrentUser();
+    if (currentUser) {
+      setUser(currentUser);
+    }
+  }, []);
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      // Simulación de login - conectar con Spring Boot
-      const mockUser: User = {
-        id: '1',
-        email,
-        firstName: 'Admin',
-        lastName: 'DPattyModa',
-        role: 'ADMIN',
-        avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=2',
-        phone: '+51 965 123 456',
-        address: 'Pampa Hermosa, Loreto, Perú',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      const response = await AuthService.login({ email, password });
       
-      setTimeout(() => {
-        setUser(mockUser);
-        localStorage.setItem('authToken', 'mock-jwt-token');
-        setIsLoading(false);
-      }, 1000);
-    } catch (error) {
+      if (response.data) {
+        const userData: User = {
+          id: response.data.id.toString(),
+          email: response.data.email,
+          firstName: response.data.nombre.split(' ')[0],
+          lastName: response.data.nombre.split(' ').slice(1).join(' ') || '',
+          role: response.data.rol as 'ADMIN' | 'EMPLOYEE' | 'CUSTOMER',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        setUser(userData);
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      throw new Error(error.message || 'Error al iniciar sesión');
+    } finally {
       setIsLoading(false);
-      throw error;
     }
   };
 
   const logout = () => {
+    AuthService.logout();
     setUser(null);
-    localStorage.removeItem('authToken');
   };
 
   return {

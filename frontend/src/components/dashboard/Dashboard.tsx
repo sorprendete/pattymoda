@@ -1,5 +1,5 @@
-// Componente Dashboard principal
-import React from 'react';
+// Dashboard conectado al backend
+import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, 
   Package, 
@@ -13,31 +13,86 @@ import {
 import { StatsCard } from './StatsCard';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { ProductService } from '../../services/productService';
+import { CustomerService } from '../../services/customerService';
+import { SaleService } from '../../services/saleService';
+
+interface DashboardStats {
+  totalProducts: number;
+  totalCustomers: number;
+  lowStockProducts: number;
+  totalRevenue: number;
+  monthlyGrowth: number;
+  todaySales: number;
+}
 
 export function Dashboard() {
-  // Datos simulados - se conectarán con Spring Boot
-  const stats = {
-    totalRevenue: 15420,
-    totalProducts: 342,
-    totalCustomers: 89,
-    monthlyGrowth: 12.5,
-    lowStockProducts: 8,
-    todaySales: 24
+  const [stats, setStats] = useState<DashboardStats>({
+    totalProducts: 0,
+    totalCustomers: 0,
+    lowStockProducts: 0,
+    totalRevenue: 0,
+    monthlyGrowth: 0,
+    todaySales: 0
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Cargar datos en paralelo
+      const [productsResponse, customersResponse, lowStockResponse] = await Promise.all([
+        ProductService.getAllProducts(),
+        CustomerService.getAllCustomers(),
+        ProductService.getLowStockProducts()
+      ]);
+
+      const products = productsResponse.data || [];
+      const customers = customersResponse.data || [];
+      const lowStockProducts = lowStockResponse.data || [];
+
+      // Calcular estadísticas
+      const totalRevenue = customers.reduce((acc, customer) => acc + (customer.totalCompras || 0), 0);
+      
+      setStats({
+        totalProducts: products.length,
+        totalCustomers: customers.length,
+        lowStockProducts: lowStockProducts.length,
+        totalRevenue,
+        monthlyGrowth: 12.5, // Esto se puede calcular comparando con el mes anterior
+        todaySales: 24 // Esto se puede obtener de las ventas del día
+      });
+    } catch (err: any) {
+      setError("Error al cargar datos del dashboard: " + (err.message || "Error desconocido"));
+      console.error("Error loading dashboard data:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const recentSales = [
-    { id: '1', customer: 'María González', amount: 89.50, items: 2, time: '10:30 AM' },
-    { id: '2', customer: 'Carlos Ruiz', amount: 156.00, items: 3, time: '11:15 AM' },
-    { id: '3', customer: 'Ana López', amount: 67.25, items: 1, time: '12:00 PM' },
-    { id: '4', customer: 'José Martínez', amount: 234.75, items: 4, time: '12:45 PM' },
-  ];
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+        <span className="ml-3 text-gray-600">Cargando dashboard...</span>
+      </div>
+    );
+  }
 
-  const topProducts = [
-    { name: 'Blusa Elegante', sales: 45, revenue: 2250 },
-    { name: 'Pantalón Casual', sales: 38, revenue: 1900 },
-    { name: 'Vestido de Noche', sales: 25, revenue: 2500 },
-    { name: 'Camisa Formal', sales: 32, revenue: 1600 },
-  ];
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-500 mb-4">{error}</div>
+        <Button onClick={loadDashboardData}>Reintentar</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -118,71 +173,59 @@ export function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Ventas Recientes */}
+        {/* Información de la Tienda */}
         <Card>
           <CardHeader>
-            <CardTitle>Ventas Recientes</CardTitle>
+            <CardTitle>Información de DPattyModa</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentSales.map((sale) => (
-                <div key={sale.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{sale.customer}</p>
-                    <p className="text-sm text-gray-500">{sale.items} productos • {sale.time}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-green-600">S/ {sale.amount}</p>
-                    <div className="flex space-x-1 mt-1">
-                      <Button variant="ghost" size="sm">
-                        <Eye className="w-3 h-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Edit className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              <div className="p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg">
+                <h4 className="font-bold text-gray-900 mb-2">📍 Ubicación</h4>
+                <p className="text-gray-700">Pampa Hermosa, Loreto, Perú</p>
+              </div>
+              
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
+                <h4 className="font-bold text-gray-900 mb-2">📞 Contacto</h4>
+                <p className="text-gray-700">+51 965 123 456</p>
+                <p className="text-gray-700">info@dpattymoda.com</p>
+              </div>
+              
+              <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg">
+                <h4 className="font-bold text-gray-900 mb-2">🕒 Horarios</h4>
+                <p className="text-gray-700">Lun-Sab: 9:00 AM - 8:00 PM</p>
+                <p className="text-gray-700">Dom: 10:00 AM - 6:00 PM</p>
+              </div>
             </div>
-            <Button variant="outline" className="w-full mt-4">
-              Ver Todas las Ventas
-            </Button>
-            <Button className="w-full mt-2">
-              Nueva Venta
-            </Button>
           </CardContent>
         </Card>
 
-        {/* Productos Más Vendidos */}
+        {/* Acciones Rápidas */}
         <Card>
           <CardHeader>
-            <CardTitle>Productos Más Vendidos</CardTitle>
+            <CardTitle>Acciones Rápidas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {topProducts.map((product, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-lg flex items-center justify-center text-black font-bold">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{product.name}</p>
-                      <p className="text-sm text-gray-500">{product.sales} vendidos</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-900">S/ {product.revenue}</p>
-                    <div className="w-20 bg-gray-200 rounded-full h-2 mt-1">
-                      <div 
-                        className="bg-gradient-to-r from-yellow-400 to-yellow-500 h-2 rounded-full" 
-                        style={{ width: `${(product.sales / 50) * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="grid grid-cols-2 gap-4">
+              <Button className="h-20 flex flex-col items-center justify-center space-y-2">
+                <ShoppingBag className="w-6 h-6" />
+                <span>Nueva Venta</span>
+              </Button>
+              
+              <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2">
+                <Package className="w-6 h-6" />
+                <span>Agregar Producto</span>
+              </Button>
+              
+              <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2">
+                <Users className="w-6 h-6" />
+                <span>Nuevo Cliente</span>
+              </Button>
+              
+              <Button variant="outline" className="h-20 flex flex-col items-center justify-center space-y-2">
+                <TrendingUp className="w-6 h-6" />
+                <span>Ver Reportes</span>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -192,7 +235,7 @@ export function Dashboard() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Tendencias de Ventas</CardTitle>
+            <CardTitle>Resumen del Sistema</CardTitle>
             <div className="flex space-x-2">
               <Button variant="ghost" size="sm">7 días</Button>
               <Button variant="outline" size="sm">30 días</Button>
@@ -201,11 +244,23 @@ export function Dashboard() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-64 flex items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
-            <div className="text-center">
-              <TrendingUp className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-500">Gráfico de tendencias</p>
-              <p className="text-sm text-gray-400">Se integrará con Chart.js</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
+              <Package className="w-12 h-12 text-blue-600 mx-auto mb-2" />
+              <h3 className="text-lg font-bold text-gray-900">{stats.totalProducts}</h3>
+              <p className="text-sm text-gray-600">Productos en inventario</p>
+            </div>
+            
+            <div className="text-center p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg">
+              <Users className="w-12 h-12 text-green-600 mx-auto mb-2" />
+              <h3 className="text-lg font-bold text-gray-900">{stats.totalCustomers}</h3>
+              <p className="text-sm text-gray-600">Clientes registrados</p>
+            </div>
+            
+            <div className="text-center p-6 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg">
+              <DollarSign className="w-12 h-12 text-yellow-600 mx-auto mb-2" />
+              <h3 className="text-lg font-bold text-gray-900">S/ {stats.totalRevenue.toLocaleString()}</h3>
+              <p className="text-sm text-gray-600">Ingresos totales</p>
             </div>
           </div>
         </CardContent>

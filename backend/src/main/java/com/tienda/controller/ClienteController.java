@@ -9,10 +9,13 @@ import jakarta.validation.Valid;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/clientes")
 @Tag(name = "Clientes", description = "Gestión de clientes")
+@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:3000"})
 public class ClienteController {
     
     @Autowired
@@ -20,63 +23,158 @@ public class ClienteController {
     
     @GetMapping
     @Operation(summary = "Obtener todos los clientes", description = "Devuelve una lista de todos los clientes")
-    public ResponseEntity<List<Cliente>> obtenerTodosLosClientes() {
-        List<Cliente> clientes = clienteService.obtenerTodosLosClientes();
-        return ResponseEntity.ok(clientes);
+    public ResponseEntity<Map<String, Object>> obtenerTodosLosClientes() {
+        try {
+            List<Cliente> clientes = clienteService.obtenerTodosLosClientes();
+            Map<String, Object> response = new HashMap<>();
+            response.put("data", clientes);
+            response.put("message", "Clientes obtenidos exitosamente");
+            response.put("status", 200);
+            response.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("data", null);
+            errorResponse.put("message", "Error al obtener clientes: " + e.getMessage());
+            errorResponse.put("status", 500);
+            errorResponse.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
     }
     
     @GetMapping("/activos")
     @Operation(summary = "Obtener clientes activos", description = "Devuelve solo los clientes activos")
-    public ResponseEntity<List<Cliente>> obtenerClientesActivos() {
-        List<Cliente> clientes = clienteService.obtenerClientesActivos();
-        return ResponseEntity.ok(clientes);
+    public ResponseEntity<Map<String, Object>> obtenerClientesActivos() {
+        try {
+            List<Cliente> clientes = clienteService.obtenerClientesActivos();
+            Map<String, Object> response = new HashMap<>();
+            response.put("data", clientes);
+            response.put("message", "Clientes activos obtenidos exitosamente");
+            response.put("status", 200);
+            response.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("data", null);
+            errorResponse.put("message", "Error al obtener clientes activos: " + e.getMessage());
+            errorResponse.put("status", 500);
+            errorResponse.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
     }
     
     @GetMapping("/{id}")
     @Operation(summary = "Obtener cliente por ID", description = "Devuelve un cliente específico por su ID")
-    public ResponseEntity<Cliente> obtenerClientePorId(@PathVariable Long id) {
-        return clienteService.obtenerClientePorId(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Map<String, Object>> obtenerClientePorId(@PathVariable Long id) {
+        try {
+            return clienteService.obtenerClientePorId(id)
+                    .map(cliente -> {
+                        Map<String, Object> response = new HashMap<>();
+                        response.put("data", cliente);
+                        response.put("message", "Cliente encontrado");
+                        response.put("status", 200);
+                        response.put("timestamp", java.time.LocalDateTime.now());
+                        return ResponseEntity.ok(response);
+                    })
+                    .orElseGet(() -> {
+                        Map<String, Object> errorResponse = new HashMap<>();
+                        errorResponse.put("data", null);
+                        errorResponse.put("message", "Cliente no encontrado");
+                        errorResponse.put("status", 404);
+                        errorResponse.put("timestamp", java.time.LocalDateTime.now());
+                        return ResponseEntity.notFound().build();
+                    });
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("data", null);
+            errorResponse.put("message", "Error al obtener cliente: " + e.getMessage());
+            errorResponse.put("status", 500);
+            errorResponse.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
     }
     
     @GetMapping("/buscar")
     @Operation(summary = "Buscar clientes", description = "Busca clientes por nombre")
-    public ResponseEntity<List<Cliente>> buscarClientes(@RequestParam String nombre) {
-        List<Cliente> clientes = clienteService.buscarClientesPorNombre(nombre);
-        return ResponseEntity.ok(clientes);
+    public ResponseEntity<Map<String, Object>> buscarClientes(@RequestParam String q) {
+        try {
+            List<Cliente> clientes = clienteService.buscarClientesPorNombre(q);
+            Map<String, Object> response = new HashMap<>();
+            response.put("data", clientes);
+            response.put("message", "Búsqueda completada exitosamente");
+            response.put("status", 200);
+            response.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("data", null);
+            errorResponse.put("message", "Error en la búsqueda: " + e.getMessage());
+            errorResponse.put("status", 500);
+            errorResponse.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
     }
     
     @PostMapping
     @Operation(summary = "Crear cliente", description = "Crea un nuevo cliente")
-    public ResponseEntity<Cliente> crearCliente(@Valid @RequestBody Cliente cliente) {
+    public ResponseEntity<Map<String, Object>> crearCliente(@Valid @RequestBody Cliente cliente) {
         try {
             Cliente nuevoCliente = clienteService.crearCliente(cliente);
-            return ResponseEntity.ok(nuevoCliente);
+            Map<String, Object> response = new HashMap<>();
+            response.put("data", nuevoCliente);
+            response.put("message", "Cliente creado exitosamente");
+            response.put("status", 201);
+            response.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.status(201).body(response);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("data", null);
+            errorResponse.put("message", "Error al crear cliente: " + e.getMessage());
+            errorResponse.put("status", 400);
+            errorResponse.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.badRequest().body(errorResponse);
         }
     }
     
     @PutMapping("/{id}")
     @Operation(summary = "Actualizar cliente", description = "Actualiza un cliente existente")
-    public ResponseEntity<Cliente> actualizarCliente(@PathVariable Long id, @Valid @RequestBody Cliente cliente) {
+    public ResponseEntity<Map<String, Object>> actualizarCliente(@PathVariable Long id, @Valid @RequestBody Cliente cliente) {
         try {
             Cliente clienteActualizado = clienteService.actualizarCliente(id, cliente);
-            return ResponseEntity.ok(clienteActualizado);
+            Map<String, Object> response = new HashMap<>();
+            response.put("data", clienteActualizado);
+            response.put("message", "Cliente actualizado exitosamente");
+            response.put("status", 200);
+            response.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("data", null);
+            errorResponse.put("message", "Error al actualizar cliente: " + e.getMessage());
+            errorResponse.put("status", 400);
+            errorResponse.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.badRequest().body(errorResponse);
         }
     }
     
     @DeleteMapping("/{id}")
     @Operation(summary = "Eliminar cliente", description = "Marca un cliente como inactivo")
-    public ResponseEntity<Void> eliminarCliente(@PathVariable Long id) {
+    public ResponseEntity<Map<String, Object>> eliminarCliente(@PathVariable Long id) {
         try {
             clienteService.eliminarCliente(id);
-            return ResponseEntity.ok().build();
+            Map<String, Object> response = new HashMap<>();
+            response.put("data", null);
+            response.put("message", "Cliente eliminado exitosamente");
+            response.put("status", 200);
+            response.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("data", null);
+            errorResponse.put("message", "Error al eliminar cliente: " + e.getMessage());
+            errorResponse.put("status", 400);
+            errorResponse.put("timestamp", java.time.LocalDateTime.now());
+            return ResponseEntity.badRequest().body(errorResponse);
         }
     }
 }
