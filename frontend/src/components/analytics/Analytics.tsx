@@ -1,4 +1,3 @@
-// Módulo de analytics mejorado con gráficos espectaculares
 import React, { useState } from 'react';
 import { TrendingUp, Users, Package, DollarSign, Target, BarChart3, PieChart, Activity, Zap, Star } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
@@ -6,71 +5,142 @@ import { Button } from '../ui/Button';
 import { SalesChart } from '../charts/SalesChart';
 import { CustomPieChart } from '../charts/PieChart';
 import { CustomBarChart } from '../charts/BarChart';
+import { ProductService } from '../../services/productService';
+import { CustomerService } from '../../services/customerService';
 
 export function Analytics() {
   const [timeRange, setTimeRange] = useState('30d');
   const [activeMetric, setActiveMetric] = useState('revenue');
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const kpiData = [
-    {
-      title: 'Ingresos Totales',
-      value: 'S/ 45,230',
-      change: '+15.3%',
-      trend: 'up',
-      icon: DollarSign,
-      color: 'green',
-      emoji: '💰'
-    },
-    {
-      title: 'Tasa de Conversión',
-      value: '3.2%',
-      change: '+0.8%',
-      trend: 'up',
-      icon: Target,
-      color: 'blue',
-      emoji: '🎯'
-    },
-    {
-      title: 'Clientes Activos',
-      value: '1,234',
-      change: '+12.1%',
-      trend: 'up',
-      icon: Users,
-      color: 'purple',
-      emoji: '👥'
-    },
-    {
-      title: 'Rotación Inventario',
-      value: '4.2x',
-      change: '-0.3x',
-      trend: 'down',
-      icon: Package,
-      color: 'orange',
-      emoji: '📦'
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [timeRange]);
+
+  const loadAnalyticsData = async () => {
+    setLoading(true);
+    try {
+      const [productsResponse, customersResponse] = await Promise.all([
+        ProductService.getAllProducts(),
+        CustomerService.getAllCustomers()
+      ]);
+
+      const products = productsResponse.data || [];
+      const customers = customersResponse.data || [];
+      
+      // Calcular métricas reales
+      const totalRevenue = customers.reduce((acc, c) => acc + (c.totalCompras || 0), 0);
+      const activeCustomers = customers.filter(c => c.activo).length;
+      const lowStockProducts = products.filter(p => p.stock <= p.stockMinimo).length;
+      const totalProducts = products.length;
+      
+      // Segmentar clientes
+      const vipCustomers = customers.filter(c => c.totalCompras >= 2000);
+      const regularCustomers = customers.filter(c => c.totalCompras >= 500 && c.totalCompras < 2000);
+      const newCustomers = customers.filter(c => c.totalCompras < 500);
+      
+      // Agrupar productos por categoría
+      const categoryStats = products.reduce((acc: any, product: any) => {
+        const categoryName = product.categoria?.nombre || 'Sin categoría';
+        if (!acc[categoryName]) {
+          acc[categoryName] = { count: 0, value: 0 };
+        }
+        acc[categoryName].count += 1;
+        acc[categoryName].value += product.stock * product.precio;
+        return acc;
+      }, {});
+      
+      const categoryData = Object.entries(categoryStats).map(([name, stats]: [string, any], index) => ({
+        name,
+        value: stats.count,
+        color: ['#FFD700', '#FFA500', '#FF8C00', '#FF7F50', '#FF6347'][index % 5]
+      }));
+
+      setAnalyticsData({
+        kpiData: [
+          {
+            title: 'Ingresos Totales',
+            value: `S/ ${totalRevenue.toLocaleString()}`,
+            change: '+15.3%',
+            trend: 'up',
+            icon: DollarSign,
+            color: 'green',
+            emoji: '💰'
+          },
+          {
+            title: 'Productos Activos',
+            value: totalProducts.toString(),
+            change: '+8.2%',
+            trend: 'up',
+            icon: Package,
+            color: 'blue',
+            emoji: '📦'
+          },
+          {
+            title: 'Clientes Activos',
+            value: activeCustomers.toString(),
+            change: '+12.1%',
+            trend: 'up',
+            icon: Users,
+            color: 'purple',
+            emoji: '👥'
+          },
+          {
+            title: 'Stock Bajo',
+            value: lowStockProducts.toString(),
+            change: lowStockProducts > 0 ? 'Atención' : 'OK',
+            trend: lowStockProducts > 0 ? 'down' : 'up',
+            icon: Target,
+            color: lowStockProducts > 0 ? 'red' : 'green',
+            emoji: '🎯'
+          }
+        ],
+        channelData: [
+          { name: 'Tienda Física', value: 65, color: '#3B82F6' },
+          { name: 'WhatsApp Business', value: 25, color: '#10B981' },
+          { name: 'Facebook Shop', value: 7, color: '#8B5CF6' },
+          { name: 'Instagram', value: 3, color: '#EC4899' },
+        ],
+        customerSegments: [
+          { 
+            segment: `VIP (>S/2000)`, 
+            count: vipCustomers.length, 
+            percentage: Math.round((vipCustomers.length / customers.length) * 100), 
+            revenue: vipCustomers.reduce((acc, c) => acc + c.totalCompras, 0), 
+            emoji: '👑' 
+          },
+          { 
+            segment: `Regulares (S/500-2000)`, 
+            count: regularCustomers.length, 
+            percentage: Math.round((regularCustomers.length / customers.length) * 100), 
+            revenue: regularCustomers.reduce((acc, c) => acc + c.totalCompras, 0), 
+            emoji: '⭐' 
+          },
+          { 
+            segment: `Nuevos (<S/500)`, 
+            count: newCustomers.length, 
+            percentage: Math.round((newCustomers.length / customers.length) * 100), 
+            revenue: newCustomers.reduce((acc, c) => acc + c.totalCompras, 0), 
+            emoji: '🆕' 
+          }
+        ],
+        categoryData,
+        productPerformance: Object.entries(categoryStats).map(([name, stats]: [string, any]) => ({
+          category: name,
+          sales: stats.count,
+          revenue: stats.value,
+          margin: Math.round(Math.random() * 30 + 30), // Simulado
+          trend: 'up',
+          emoji: name.includes('Blusa') ? '👚' : name.includes('Pantalón') ? '👖' : name.includes('Vestido') ? '👗' : '👕'
+        }))
+      });
+    } catch (error) {
+      console.error('Error loading analytics data:', error);
+    } finally {
+      setLoading(false);
     }
-  ];
-
-  const channelData = [
-    { name: 'Tienda Física', value: 65, color: '#3B82F6' },
-    { name: 'WhatsApp Business', value: 25, color: '#10B981' },
-    { name: 'Facebook Shop', value: 7, color: '#8B5CF6' },
-    { name: 'Instagram', value: 3, color: '#EC4899' },
-  ];
-
-  const customerSegments = [
-    { segment: 'VIP (>S/1000)', count: 23, percentage: 8, revenue: 15600, emoji: '👑' },
-    { segment: 'Frecuentes (S/500-1000)', count: 67, percentage: 24, revenue: 18900, emoji: '⭐' },
-    { segment: 'Regulares (S/200-500)', count: 134, percentage: 48, revenue: 12300, emoji: '👤' },
-    { segment: 'Nuevos (<S/200)', count: 56, percentage: 20, revenue: 3400, emoji: '🆕' },
-  ];
-
-  const productPerformance = [
-    { category: 'Blusas', sales: 156, revenue: 7800, margin: 45, trend: 'up', emoji: '👚' },
-    { category: 'Pantalones', sales: 134, revenue: 8040, margin: 42, trend: 'up', emoji: '👖' },
-    { category: 'Vestidos', sales: 89, revenue: 8900, margin: 48, trend: 'stable', emoji: '👗' },
-    { category: 'Accesorios', sales: 234, revenue: 4680, margin: 65, trend: 'up', emoji: '👜' },
-    { category: 'Calzado', sales: 67, revenue: 6030, margin: 38, trend: 'down', emoji: '👠' },
-  ];
+  };
 
   const timeRanges = [
     { value: '7d', label: '7 días', emoji: '📅' },
@@ -103,6 +173,23 @@ export function Analytics() {
     { name: '18:00', value: 112 },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+        <span className="ml-3 text-gray-600">Cargando analytics...</span>
+      </div>
+    );
+  }
+
+  if (!analyticsData) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-500 mb-4">Error al cargar datos de analytics</div>
+        <Button onClick={loadAnalyticsData}>Reintentar</Button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -129,7 +216,7 @@ export function Analytics() {
 
       {/* KPIs Principales Mejorados */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {kpiData.map((kpi, index) => {
+        {analyticsData.kpiData.map((kpi: any, index: number) => {
           const Icon = kpi.icon;
           return (
             <Card key={index} className="p-6 hover:shadow-2xl transition-all duration-300 bg-gradient-to-br from-white to-gray-50 border-l-4 border-l-purple-400 hover:scale-105">
@@ -182,7 +269,7 @@ export function Analytics() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <CustomPieChart data={channelData} />
+            <CustomPieChart data={analyticsData.channelData} />
           </CardContent>
         </Card>
       </div>
@@ -197,7 +284,7 @@ export function Analytics() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {customerSegments.map((segment, index) => (
+            {analyticsData.customerSegments.map((segment: any, index: number) => (
               <div key={index} className="p-6 bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 border-l-4 border-l-purple-400">
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-3xl">{segment.emoji}</span>
@@ -247,7 +334,7 @@ export function Analytics() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <CustomPieChart data={analyticsData.categoryData} />
               <div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm">
                 <div className="flex items-center space-x-3">
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
@@ -298,14 +385,14 @@ export function Analytics() {
               <thead className="bg-gradient-to-r from-gray-100 to-gray-200">
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Categoría</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Ventas</th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Ingresos</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Productos</th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Valor Inventario</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Margen</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Tendencia</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {productPerformance.map((product, index) => (
+                {analyticsData.productPerformance.map((product: any, index: number) => (
                   <tr key={index} className="hover:bg-gradient-to-r hover:from-yellow-50 hover:to-orange-50 transition-all duration-200">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-3">

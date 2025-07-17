@@ -1,19 +1,19 @@
-// Gestión de categorías
 import React, { useState } from 'react';
 import { Plus, Search, Edit, Trash2, Tag, ChevronRight, Folder, FolderOpen } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
+import { CategoryService } from '../../services/categoryService';
 
 interface Category {
   id: string;
-  name: string;
-  description: string;
-  parentId?: string;
-  productCount: number;
-  isActive: boolean;
-  children?: Category[];
+  nombre: string;
+  descripcion: string;
+  categoriaPadreId?: string;
+  activo: boolean;
+  orden?: number;
+  fechaCreacion: string;
 }
 
 export function CategoryList() {
@@ -21,60 +21,59 @@ export function CategoryList() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Datos simulados con estructura jerárquica
-  const categories: Category[] = [
-    {
-      id: '1',
-      name: 'Ropa Femenina',
-      description: 'Toda la ropa para mujeres',
-      productCount: 156,
-      isActive: true,
-      children: [
-        { id: '1-1', name: 'Blusas', description: 'Blusas elegantes y casuales', parentId: '1', productCount: 45, isActive: true },
-        { id: '1-2', name: 'Vestidos', description: 'Vestidos para toda ocasión', parentId: '1', productCount: 32, isActive: true },
-        { id: '1-3', name: 'Faldas', description: 'Faldas modernas', parentId: '1', productCount: 28, isActive: true },
-        { id: '1-4', name: 'Pantalones', description: 'Pantalones y jeans', parentId: '1', productCount: 51, isActive: true },
-      ]
-    },
-    {
-      id: '2',
-      name: 'Ropa Masculina',
-      description: 'Ropa para hombres',
-      productCount: 89,
-      isActive: true,
-      children: [
-        { id: '2-1', name: 'Camisas', description: 'Camisas formales y casuales', parentId: '2', productCount: 34, isActive: true },
-        { id: '2-2', name: 'Pantalones', description: 'Pantalones masculinos', parentId: '2', productCount: 28, isActive: true },
-        { id: '2-3', name: 'Polos', description: 'Polos deportivos y casuales', parentId: '2', productCount: 27, isActive: true },
-      ]
-    },
-    {
-      id: '3',
-      name: 'Accesorios',
-      description: 'Complementos y accesorios',
-      productCount: 67,
-      isActive: true,
-      children: [
-        { id: '3-1', name: 'Bolsos', description: 'Carteras y bolsos', parentId: '3', productCount: 23, isActive: true },
-        { id: '3-2', name: 'Cinturones', description: 'Cinturones de cuero y tela', parentId: '3', productCount: 18, isActive: true },
-        { id: '3-3', name: 'Joyas', description: 'Collares, pulseras y aretes', parentId: '3', productCount: 26, isActive: true },
-      ]
-    },
-    {
-      id: '4',
-      name: 'Calzado',
-      description: 'Zapatos y sandalias',
-      productCount: 45,
-      isActive: true,
-      children: [
-        { id: '4-1', name: 'Zapatos Formales', description: 'Zapatos para ocasiones especiales', parentId: '4', productCount: 15, isActive: true },
-        { id: '4-2', name: 'Zapatillas', description: 'Calzado deportivo y casual', parentId: '4', productCount: 20, isActive: true },
-        { id: '4-3', name: 'Sandalias', description: 'Sandalias y chanclas', parentId: '4', productCount: 10, isActive: true },
-      ]
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const loadCategories = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await CategoryService.getAllCategories();
+      setCategories(response.data || []);
+    } catch (err: any) {
+      setError("Error al cargar categorías: " + (err.message || "Error desconocido"));
+      console.error("Error loading categories:", err);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
+  // Organizar categorías en estructura jerárquica
+  const organizeCategories = (categories: Category[]) => {
+    const categoryMap = new Map();
+    const rootCategories: any[] = [];
+
+    // Crear mapa de categorías
+    categories.forEach(cat => {
+      categoryMap.set(cat.id, { ...cat, children: [] });
+    });
+
+    // Organizar jerarquía
+    categories.forEach(cat => {
+      const category = categoryMap.get(cat.id);
+      if (cat.categoriaPadreId) {
+        const parent = categoryMap.get(cat.categoriaPadreId);
+        if (parent) {
+          parent.children.push(category);
+        }
+      } else {
+        rootCategories.push(category);
+      }
+    });
+
+    return rootCategories;
+  };
+
+  const organizedCategories = organizeCategories(categories);
+  const filteredCategories = organizedCategories.filter(category =>
+    category.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    category.descripcion?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
   const toggleExpanded = (categoryId: string) => {
     const newExpanded = new Set(expandedCategories);
     if (newExpanded.has(categoryId)) {
@@ -95,6 +94,30 @@ export function CategoryList() {
     setIsModalOpen(true);
   };
 
+  const handleDeleteCategory = async (categoryId: string) => {
+    if (window.confirm("¿Estás seguro de que deseas eliminar esta categoría?")) {
+      try {
+        await CategoryService.deleteCategory(categoryId);
+        await loadCategories();
+      } catch (err: any) {
+        alert("Error al eliminar categoría: " + (err.message || "Error desconocido"));
+      }
+    }
+  };
+
+  const handleSaveCategory = async (categoryData: any) => {
+    try {
+      if (selectedCategory) {
+        await CategoryService.updateCategory(selectedCategory.id, categoryData);
+      } else {
+        await CategoryService.createCategory(categoryData);
+      }
+      setIsModalOpen(false);
+      await loadCategories();
+    } catch (err: any) {
+      alert("Error al guardar categoría: " + (err.message || "Error desconocido"));
+    }
+  };
   const renderCategory = (category: Category, level: number = 0) => (
     <div key={category.id} className="space-y-2">
       <div 
@@ -125,15 +148,19 @@ export function CategoryList() {
           </div>
           
           <div>
-            <h3 className="font-semibold text-gray-900">{category.name}</h3>
-            <p className="text-sm text-gray-500">{category.description}</p>
+            <h3 className="font-semibold text-gray-900">{category.nombre}</h3>
+            <p className="text-sm text-gray-500">{category.descripcion}</p>
+            <p className="text-xs text-gray-400">
+              Creada: {new Date(category.fechaCreacion).toLocaleDateString('es-PE')}
+            </p>
           </div>
         </div>
 
         <div className="flex items-center space-x-4">
-          <div className="text-right">
-            <p className="font-medium text-gray-900">{category.productCount}</p>
-            <p className="text-xs text-gray-500">productos</p>
+          <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+            category.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}>
+            {category.activo ? 'Activa' : 'Inactiva'}
           </div>
           
           <div className="flex space-x-1">
@@ -144,7 +171,11 @@ export function CategoryList() {
             >
               <Edit className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="sm">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => handleDeleteCategory(category.id)}
+            >
               <Trash2 className="w-4 h-4" />
             </Button>
           </div>
@@ -159,6 +190,23 @@ export function CategoryList() {
     </div>
   );
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+        <span className="ml-3 text-gray-600">Cargando categorías...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-500 mb-4">{error}</div>
+        <Button onClick={loadCategories}>Reintentar</Button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -191,9 +239,9 @@ export function CategoryList() {
               <Folder className="w-6 h-6 text-green-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Subcategorías</p>
+              <p className="text-sm font-medium text-gray-500">Categorías Activas</p>
               <p className="text-2xl font-bold text-gray-900">
-                {categories.reduce((acc, cat) => acc + (cat.children?.length || 0), 0)}
+                {categories.filter(c => c.activo).length}
               </p>
             </div>
           </div>
@@ -205,8 +253,10 @@ export function CategoryList() {
               <Tag className="w-6 h-6 text-yellow-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Más Popular</p>
-              <p className="text-lg font-bold text-gray-900">Ropa Femenina</p>
+              <p className="text-sm font-medium text-gray-500">Subcategorías</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {categories.filter(c => c.categoriaPadreId).length}
+              </p>
             </div>
           </div>
         </Card>
@@ -217,9 +267,9 @@ export function CategoryList() {
               <Tag className="w-6 h-6 text-purple-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Total Productos</p>
+              <p className="text-sm font-medium text-gray-500">Principales</p>
               <p className="text-2xl font-bold text-gray-900">
-                {categories.reduce((acc, cat) => acc + cat.productCount, 0)}
+                {categories.filter(c => !c.categoriaPadreId).length}
               </p>
             </div>
           </div>
@@ -240,9 +290,25 @@ export function CategoryList() {
 
       {/* Lista de Categorías */}
       <div className="space-y-4">
-        {categories.map(category => renderCategory(category))}
+        {filteredCategories.map(category => renderCategory(category))}
       </div>
 
+      {filteredCategories.length === 0 && !loading && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <Tag className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No se encontraron categorías
+            </h3>
+            <p className="text-gray-500 mb-4">
+              {searchTerm ? "Prueba con otros términos de búsqueda" : "Comienza creando tu primera categoría"}
+            </p>
+            <Button onClick={handleNewCategory}>
+              {searchTerm ? "Limpiar búsqueda" : "Crear Primera Categoría"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       {/* Modal de Categoría */}
       <Modal
         isOpen={isModalOpen}
@@ -251,13 +317,18 @@ export function CategoryList() {
         size="md"
       >
         <div className="space-y-4">
-          <Input label="Nombre de la Categoría" defaultValue={selectedCategory?.name} />
+          <Input 
+            label="Nombre de la Categoría" 
+            defaultValue={selectedCategory?.nombre}
+            id="categoryName"
+          />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Descripción
             </label>
             <textarea
-              defaultValue={selectedCategory?.description}
+              defaultValue={selectedCategory?.descripcion}
+              id="categoryDescription"
               rows={3}
               className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500"
               placeholder="Descripción de la categoría..."
@@ -267,19 +338,43 @@ export function CategoryList() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Categoría Padre
             </label>
-            <select className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500">
+            <select 
+              id="categoryParent"
+              defaultValue={selectedCategory?.categoriaPadreId || ''}
+              className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500"
+            >
               <option value="">Sin categoría padre</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              {categories.filter(cat => !cat.categoriaPadreId && cat.id !== selectedCategory?.id).map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.nombre}</option>
               ))}
             </select>
+          </div>
+          
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="categoryActive"
+              defaultChecked={selectedCategory?.activo ?? true}
+              className="rounded border-gray-300"
+            />
+            <label htmlFor="categoryActive" className="ml-2 text-sm text-gray-700">
+              Categoría activa
+            </label>
           </div>
           
           <div className="flex justify-end space-x-3 pt-6 border-t">
             <Button variant="ghost" onClick={() => setIsModalOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={() => setIsModalOpen(false)}>
+            <Button onClick={() => {
+              const formData = {
+                nombre: (document.getElementById('categoryName') as HTMLInputElement)?.value,
+                descripcion: (document.getElementById('categoryDescription') as HTMLTextAreaElement)?.value,
+                categoriaPadreId: (document.getElementById('categoryParent') as HTMLSelectElement)?.value || null,
+                activo: (document.getElementById('categoryActive') as HTMLInputElement)?.checked,
+              };
+              handleSaveCategory(formData);
+            }}>
               {selectedCategory ? 'Actualizar Categoría' : 'Crear Categoría'}
             </Button>
           </div>

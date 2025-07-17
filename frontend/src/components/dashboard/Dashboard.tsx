@@ -1,4 +1,3 @@
-// Dashboard conectado al backend
 import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, 
@@ -7,23 +6,22 @@ import {
   TrendingUp, 
   AlertTriangle,
   ShoppingBag,
-  Eye,
-  Edit
+  Calendar,
+  Store
 } from 'lucide-react';
 import { StatsCard } from './StatsCard';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ProductService } from '../../services/productService';
 import { CustomerService } from '../../services/customerService';
-import { SaleService } from '../../services/saleService';
 
 interface DashboardStats {
   totalProducts: number;
   totalCustomers: number;
   lowStockProducts: number;
   totalRevenue: number;
-  monthlyGrowth: number;
-  todaySales: number;
+  activeProducts: number;
+  vipCustomers: number;
 }
 
 export function Dashboard() {
@@ -32,11 +30,12 @@ export function Dashboard() {
     totalCustomers: 0,
     lowStockProducts: 0,
     totalRevenue: 0,
-    monthlyGrowth: 0,
-    todaySales: 0
+    activeProducts: 0,
+    vipCustomers: 0
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
   useEffect(() => {
     loadDashboardData();
@@ -46,18 +45,21 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      // Cargar datos en paralelo
-      const [productsResponse, customersResponse, lowStockResponse] = await Promise.all([
+      const [productsResponse, customersResponse] = await Promise.all([
         ProductService.getAllProducts(),
-        CustomerService.getAllCustomers(),
-        ProductService.getLowStockProducts()
+        CustomerService.getAllCustomers()
       ]);
 
       const products = productsResponse.data || [];
       const customers = customersResponse.data || [];
-      const lowStockProducts = lowStockResponse.data || [];
 
-      // Calcular estadísticas
+      // Filtrar productos con stock bajo
+      const lowStockProducts = products.filter(p => p.stock <= p.stockMinimo);
+      const activeProducts = products.filter(p => p.activo);
+      
+      // Calcular clientes VIP (más de S/2000 en compras)
+      const vipCustomers = customers.filter(c => c.totalCompras >= 2000);
+      
       const totalRevenue = customers.reduce((acc, customer) => acc + (customer.totalCompras || 0), 0);
       
       setStats({
@@ -65,9 +67,18 @@ export function Dashboard() {
         totalCustomers: customers.length,
         lowStockProducts: lowStockProducts.length,
         totalRevenue,
-        monthlyGrowth: 12.5, // Esto se puede calcular comparando con el mes anterior
-        todaySales: 24 // Esto se puede obtener de las ventas del día
+        activeProducts: activeProducts.length,
+        vipCustomers: vipCustomers.length
       });
+      
+      // Simular actividad reciente (esto se puede reemplazar con datos reales)
+      setRecentActivity([
+        { type: 'sale', message: 'Nueva venta registrada', time: '5 min', amount: 'S/ 150.00' },
+        { type: 'product', message: 'Producto agregado al inventario', time: '15 min', product: 'Blusa Elegante' },
+        { type: 'customer', message: 'Nuevo cliente registrado', time: '30 min', customer: 'María García' },
+        { type: 'stock', message: 'Alerta de stock bajo', time: '1 hora', product: 'Pantalón Casual' }
+      ]);
+      
     } catch (err: any) {
       setError("Error al cargar datos del dashboard: " + (err.message || "Error desconocido"));
       console.error("Error loading dashboard data:", err);

@@ -1,4 +1,3 @@
-// Lista de productos conectada al backend
 import React, { useState, useEffect } from "react";
 import {
   Plus,
@@ -8,6 +7,9 @@ import {
   Trash2,
   Package,
   AlertTriangle,
+  Eye,
+  Star,
+  TrendingUp
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -33,19 +35,27 @@ interface Product {
   };
   activo: boolean;
   fechaCreacion: string;
+  destacado?: boolean;
+  enOferta?: boolean;
+  precioOferta?: number;
 }
 
 export function ProductList() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Cargar productos desde el backend
   useEffect(() => {
     loadProducts();
+    loadCategories();
   }, []);
 
   const loadProducts = async () => {
@@ -62,20 +72,48 @@ export function ProductList() {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      // Importar dinámicamente el servicio de categorías
+      const { CategoryService } = await import("../../services/categoryService");
+      const response = await CategoryService.getAllCategories();
+      setCategories(response.data || []);
+    } catch (err: any) {
+      console.error("Error loading categories:", err);
+    }
+  };
   const filteredProducts = products.filter(
     (product) =>
-      product.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = product.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.categoria.nombre.toLowerCase().includes(searchTerm.toLowerCase())
+      product.categoria.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.marca && product.marca.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesCategory = filterCategory === "all" || product.categoria.id === filterCategory;
+    
+    const matchesStatus = filterStatus === "all" || 
+      (filterStatus === "active" && product.activo) ||
+      (filterStatus === "inactive" && !product.activo) ||
+      (filterStatus === "low_stock" && product.stock <= product.stockMinimo) ||
+      (filterStatus === "featured" && product.destacado) ||
+      (filterStatus === "on_sale" && product.enOferta);
+    
+    return matchesSearch && matchesCategory && matchesStatus;
   );
 
   const lowStockProducts = products.filter((p) => p.stock <= p.stockMinimo);
+  const featuredProducts = products.filter((p) => p.destacado);
+  const onSaleProducts = products.filter((p) => p.enOferta);
 
   const handleEditProduct = (product: Product) => {
     setSelectedProduct(product);
     setIsModalOpen(true);
   };
 
+  const handleViewProduct = (product: Product) => {
+    setSelectedProduct(product);
+    setIsViewModalOpen(true);
+  };
   const handleNewProduct = () => {
     setSelectedProduct(null);
     setIsModalOpen(true);
@@ -106,6 +144,25 @@ export function ProductList() {
     }
   };
 
+  const getProductPrice = (product: Product) => {
+    if (product.enOferta && product.precioOferta) {
+      return (
+        <div className="flex items-center space-x-2">
+          <span className="text-lg font-bold text-red-600">
+            S/ {product.precioOferta.toFixed(2)}
+          </span>
+          <span className="text-sm text-gray-500 line-through">
+            S/ {product.precio.toFixed(2)}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <span className="text-xl font-bold text-gray-900">
+        S/ {product.precio.toFixed(2)}
+      </span>
+    );
+  };
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -182,12 +239,23 @@ export function ProductList() {
         <Card className="p-4">
           <div className="flex items-center">
             <div className="p-2 bg-yellow-100 rounded-lg">
-              <Package className="w-6 h-6 text-yellow-600" />
+              <Star className="w-6 h-6 text-yellow-600" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-500">Valor Inventario</p>
+              <p className="text-sm font-medium text-gray-500">Destacados</p>
+              <p className="text-2xl font-bold text-gray-900">{featuredProducts.length}</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <TrendingUp className="w-6 h-6 text-purple-600" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-500">En Oferta</p>
               <p className="text-2xl font-bold text-gray-900">
-                S/ {products.reduce((acc, p) => acc + (p.precio * p.stock), 0).toLocaleString()}
+                {onSaleProducts.length}
               </p>
             </div>
           </div>
@@ -215,7 +283,7 @@ export function ProductList() {
       {/* Filtros y Búsqueda */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="flex-1">
               <Input
                 placeholder="Buscar productos por nombre, SKU o categoría..."
@@ -224,8 +292,35 @@ export function ProductList() {
                 leftIcon={<Search className="w-4 h-4 text-gray-400" />}
               />
             </div>
+            
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500"
+            >
+              <option value="all">Todas las categorías</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.nombre}
+                </option>
+              ))}
+            </select>
+            
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500"
+            >
+              <option value="all">Todos los estados</option>
+              <option value="active">Activos</option>
+              <option value="inactive">Inactivos</option>
+              <option value="low_stock">Stock bajo</option>
+              <option value="featured">Destacados</option>
+              <option value="on_sale">En oferta</option>
+            </select>
+            
             <Button variant="outline" leftIcon={<Filter className="w-4 h-4" />}>
-              Filtros
+              Más Filtros
             </Button>
           </div>
         </CardContent>
@@ -251,6 +346,14 @@ export function ProductList() {
                 <Button
                   variant="secondary"
                   size="sm"
+                  onClick={() => handleViewProduct(product)}
+                  className="shadow-lg"
+                >
+                  <Eye className="w-3 h-3" />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => handleEditProduct(product)}
                   className="shadow-lg"
                 >
@@ -265,11 +368,31 @@ export function ProductList() {
                   <Trash2 className="w-3 h-3" />
                 </Button>
               </div>
-              {product.stock <= product.stockMinimo && (
-                <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium">
-                  Stock Bajo
-                </div>
-              )}
+              
+              {/* Badges */}
+              <div className="absolute top-2 left-2 flex flex-col space-y-1">
+                {product.destacado && (
+                  <span className="bg-yellow-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center">
+                    <Star className="w-3 h-3 mr-1" />
+                    Destacado
+                  </span>
+                )}
+                {product.enOferta && (
+                  <span className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium">
+                    Oferta
+                  </span>
+                )}
+                {product.stock <= product.stockMinimo && (
+                  <span className="bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium">
+                    Stock Bajo
+                  </span>
+                )}
+                {!product.activo && (
+                  <span className="bg-gray-500 text-white px-2 py-1 rounded text-xs font-medium">
+                    Inactivo
+                  </span>
+                )}
+              </div>
             </div>
 
             <CardContent className="p-4">
@@ -287,10 +410,11 @@ export function ProductList() {
                   </span>
                 </div>
 
+                {product.marca && (
+                  <p className="text-sm text-gray-600">Marca: {product.marca}</p>
+                )}
                 <div className="flex items-center justify-between">
-                  <p className="text-xl font-bold text-gray-900">
-                    S/ {product.precio.toFixed(2)}
-                  </p>
+                  {getProductPrice(product)}
                   <div className="flex items-center space-x-1">
                     <Package className="w-4 h-4 text-gray-400" />
                     <span
@@ -357,5 +481,85 @@ export function ProductList() {
         />
       </Modal>
     </div>
+      {/* Modal de Vista de Producto */}
+      <Modal
+        isOpen={isViewModalOpen}
+        onClose={() => setIsViewModalOpen(false)}
+        title="Detalles del Producto"
+        size="lg"
+      >
+        {selectedProduct && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <img
+                  src={selectedProduct.imagen || 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=400&h=300&dpr=2'}
+                  alt={selectedProduct.nombre}
+                  className="w-full h-64 object-cover rounded-lg"
+                />
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">{selectedProduct.nombre}</h3>
+                  <p className="text-gray-600">{selectedProduct.sku}</p>
+                </div>
+                
+                <div className="flex items-center space-x-4">
+                  {getProductPrice(selectedProduct)}
+                  {selectedProduct.costo && (
+                    <span className="text-sm text-gray-500">
+                      Costo: S/ {selectedProduct.costo.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Stock:</span>
+                    <span className={`ml-2 font-medium ${
+                      selectedProduct.stock <= selectedProduct.stockMinimo ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {selectedProduct.stock} unidades
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Stock Mínimo:</span>
+                    <span className="ml-2 font-medium">{selectedProduct.stockMinimo}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Categoría:</span>
+                    <span className="ml-2 font-medium">{selectedProduct.categoria.nombre}</span>
+                  </div>
+                  {selectedProduct.marca && (
+                    <div>
+                      <span className="text-gray-500">Marca:</span>
+                      <span className="ml-2 font-medium">{selectedProduct.marca}</span>
+                    </div>
+                  )}
+                </div>
+                
+                {selectedProduct.descripcion && (
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-2">Descripción</h4>
+                    <p className="text-gray-600 text-sm">{selectedProduct.descripcion}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-3 pt-6 border-t">
+              <Button variant="ghost" onClick={() => setIsViewModalOpen(false)}>
+                Cerrar
+              </Button>
+              <Button onClick={() => {
+                setIsViewModalOpen(false);
+                handleEditProduct(selectedProduct);
+              }}>
+                Editar Producto
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
   );
 }

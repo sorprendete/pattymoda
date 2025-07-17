@@ -1,4 +1,3 @@
-// Componente mejorado para nueva venta con pagos combinados
 import React, { useState } from 'react';
 import { Plus, Search, Minus, ShoppingCart, User, CreditCard, Calculator, Receipt } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
@@ -6,15 +5,28 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { TaxService } from '../../services/taxService';
+import { ProductService } from '../../services/productService';
+import { CustomerService } from '../../services/customerService';
 
 interface Product {
   id: string;
-  name: string;
+  nombre: string;
+  sku: string;
   price: number;
   stock: number;
-  image: string;
+  imagen: string;
+  categoria: {
+    nombre: string;
+  };
 }
 
+interface Customer {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  telefono: string;
+}
 interface SaleItem {
   product: Product;
   quantity: number;
@@ -30,8 +42,9 @@ interface PaymentMethod {
 
 export function NewSale() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
-  const [customer, setCustomer] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([
     { type: 'cash', amount: 0 }
   ]);
@@ -39,10 +52,15 @@ export function NewSale() {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [igvConfig, setIgvConfig] = useState<any>(null);
   const [applyTax, setApplyTax] = useState(true);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Cargar configuración de IGV al inicializar
+  // Cargar datos al inicializar
   React.useEffect(() => {
     loadIGVConfig();
+    loadProducts();
+    loadCustomers();
   }, []);
 
   const loadIGVConfig = async () => {
@@ -55,45 +73,59 @@ export function NewSale() {
     }
   };
 
-  // Productos simulados
-  const products: Product[] = [
-    {
-      id: '1',
-      name: 'Blusa Elegante Manga Larga',
-      price: 85.00,
-      stock: 15,
-      image: 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2'
-    },
-    {
-      id: '2',
-      name: 'Pantalón Casual Denim',
-      price: 120.00,
-      stock: 8,
-      image: 'https://images.pexels.com/photos/1598505/pexels-photo-1598505.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2'
-    },
-    {
-      id: '3',
-      name: 'Vestido de Noche Elegante',
-      price: 180.00,
-      stock: 5,
-      image: 'https://images.pexels.com/photos/1447884/pexels-photo-1447884.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2'
-    },
-    {
-      id: '4',
-      name: 'Camisa Formal Blanca',
-      price: 95.00,
-      stock: 12,
-      image: 'https://images.pexels.com/photos/996329/pexels-photo-996329.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2'
+  const loadProducts = async () => {
+    try {
+      const response = await ProductService.getAllProducts();
+      const productsData = response.data || [];
+      // Mapear los datos del backend al formato esperado
+      const mappedProducts = productsData.map((p: any) => ({
+        id: p.id,
+        nombre: p.nombre,
+        sku: p.sku,
+        price: p.precio,
+        stock: p.stock,
+        imagen: p.imagen || 'https://images.pexels.com/photos/1536619/pexels-photo-1536619.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&dpr=2',
+        categoria: p.categoria
+      }));
+      setProducts(mappedProducts);
+    } catch (error) {
+      console.error('Error loading products:', error);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
+  const loadCustomers = async () => {
+    try {
+      const response = await CustomerService.getAllCustomers();
+      setCustomers(response.data || []);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+    }
+  };
   const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase())
+    product.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.categoria.nombre.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const filteredCustomers = customers.filter(customer =>
+    `${customer.nombre} ${customer.apellido}`.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+    customer.email.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+    customer.telefono.includes(customerSearchTerm)
+  );
   const addToSale = (product: Product) => {
+    if (product.stock <= 0) {
+      alert('Este producto no tiene stock disponible');
+      return;
+    }
+    
     const existingItem = saleItems.find(item => item.product.id === product.id);
     if (existingItem) {
+      if (existingItem.quantity >= product.stock) {
+        alert('No hay suficiente stock para agregar más unidades');
+        return;
+      }
       setSaleItems(saleItems.map(item =>
         item.product.id === product.id
           ? { ...item, quantity: item.quantity + 1 }
@@ -113,6 +145,11 @@ export function NewSale() {
     if (newQuantity === 0) {
       setSaleItems(saleItems.filter(item => item.product.id !== productId));
     } else {
+      const product = products.find(p => p.id === productId);
+      if (product && newQuantity > product.stock) {
+        alert('No hay suficiente stock disponible');
+        return;
+      }
       setSaleItems(saleItems.map(item =>
         item.product.id === productId
           ? { ...item, quantity: newQuantity }
@@ -156,13 +193,23 @@ export function NewSale() {
   ];
 
   const handleCompleteSale = () => {
+    if (!selectedCustomer) {
+      alert('Debe seleccionar un cliente');
+      return;
+    }
+    
+    if (saleItems.length === 0) {
+      alert('Debe agregar al menos un producto');
+      return;
+    }
+    
     if (totalPaid < total) {
       alert('El monto pagado es insuficiente');
       return;
     }
 
     console.log('Venta completada:', {
-      customer,
+      customer: selectedCustomer,
       items: saleItems,
       paymentMethods,
       subtotal,
@@ -175,11 +222,22 @@ export function NewSale() {
     
     // Limpiar formulario
     setSaleItems([]);
-    setCustomer('');
+    setSelectedCustomer(null);
+    setCustomerSearchTerm('');
     setPaymentMethods([{ type: 'cash', amount: 0 }]);
     setDiscount(0);
+    
+    alert('Venta registrada exitosamente');
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+        <span className="ml-3 text-gray-600">Cargando datos...</span>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -227,20 +285,32 @@ export function NewSale() {
                       onClick={() => addToSale(product)}
                     >
                       <img
-                        src={product.image}
-                        alt={product.name}
+                        src={product.imagen}
+                        alt={product.nombre}
                         className="w-16 h-16 object-cover rounded-lg shadow-md"
                       />
                       <div className="flex-1">
-                        <h4 className="font-bold text-gray-900">{product.name}</h4>
+                        <h4 className="font-bold text-gray-900">{product.nombre}</h4>
+                        <p className="text-xs text-gray-500">{product.sku} • {product.categoria.nombre}</p>
                         <p className="text-sm text-gray-500">📦 Stock: {product.stock}</p>
                         <p className="text-lg font-bold text-green-600">S/ {product.price}</p>
                       </div>
-                      <Button size="sm" className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600">
+                      <Button 
+                        size="sm" 
+                        className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+                        disabled={product.stock <= 0}
+                      >
                         <Plus className="w-4 h-4" />
                       </Button>
                     </div>
                   ))}
+                   
+                   {filteredProducts.length === 0 && (
+                     <div className="col-span-2 text-center py-8 text-gray-500">
+                       <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                       <p>No se encontraron productos</p>
+                     </div>
+                   )}
                 </div>
               </div>
             </CardContent>
@@ -259,12 +329,59 @@ export function NewSale() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
+                {selectedCustomer ? (
+                  <div className="p-3 bg-white rounded-lg border border-purple-300">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900">
+                          {selectedCustomer.nombre} {selectedCustomer.apellido}
+                        </h4>
+                        <p className="text-sm text-gray-500">{selectedCustomer.email}</p>
+                        <p className="text-sm text-gray-500">{selectedCustomer.telefono}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCustomer(null);
+                          setCustomerSearchTerm('');
+                        }}
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 <Input
                   placeholder="🔍 Buscar cliente..."
-                  value={customer}
-                  onChange={(e) => setCustomer(e.target.value)}
+                  value={customerSearchTerm}
+                  onChange={(e) => setCustomerSearchTerm(e.target.value)}
                   className="bg-white border-purple-300 focus:ring-purple-500 focus:border-purple-500"
                 />
+                
+                {customerSearchTerm && filteredCustomers.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto bg-white border border-purple-300 rounded-lg">
+                    {filteredCustomers.slice(0, 5).map((customer) => (
+                      <div
+                        key={customer.id}
+                        className="p-2 hover:bg-purple-50 cursor-pointer border-b last:border-b-0"
+                        onClick={() => {
+                          setSelectedCustomer(customer);
+                          setCustomerSearchTerm('');
+                        }}
+                      >
+                        <p className="font-medium text-gray-900">
+                          {customer.nombre} {customer.apellido}
+                        </p>
+                        <p className="text-sm text-gray-500">{customer.email}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                  </>
+                )}
+                
                 <Button
                   variant="outline"
                   size="sm"
@@ -290,13 +407,13 @@ export function NewSale() {
                 {saleItems.map((item) => (
                   <div key={item.product.id} className="flex items-center space-x-2 p-3 bg-white rounded-lg shadow-sm border border-green-200">
                     <img
-                      src={item.product.image}
-                      alt={item.product.name}
+                      src={item.product.imagen}
+                      alt={item.product.nombre}
                       className="w-10 h-10 object-cover rounded-lg"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-gray-900 truncate">
-                        {item.product.name}
+                        {item.product.nombre}
                       </p>
                       <p className="text-xs text-gray-500">
                         S/ {item.product.price} c/u
@@ -319,6 +436,7 @@ export function NewSale() {
                         variant="ghost"
                         onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
                         className="w-8 h-8 p-0"
+                        disabled={item.quantity >= item.product.stock}
                       >
                         <Plus className="w-3 h-3" />
                       </Button>
@@ -532,7 +650,7 @@ export function NewSale() {
               className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
               size="lg"
               onClick={handleCompleteSale}
-              disabled={saleItems.length === 0 || totalPaid < total}
+              disabled={saleItems.length === 0 || totalPaid < total || !selectedCustomer}
             >
               ✅ Completar Venta
             </Button>
@@ -564,6 +682,24 @@ export function NewSale() {
               Cancelar
             </Button>
             <Button onClick={() => setIsCustomerModalOpen(false)} className="bg-gradient-to-r from-purple-500 to-pink-500">
+              const customerData = {
+                nombre: (document.getElementById('newCustomerName') as HTMLInputElement)?.value,
+                apellido: (document.getElementById('newCustomerLastName') as HTMLInputElement)?.value,
+                email: (document.getElementById('newCustomerEmail') as HTMLInputElement)?.value,
+                telefono: (document.getElementById('newCustomerPhone') as HTMLInputElement)?.value,
+                direccion: (document.getElementById('newCustomerAddress') as HTMLInputElement)?.value,
+                distrito: 'Pampa Hermosa',
+                ciudad: 'Pampa Hermosa'
+              };
+              
+              try {
+                const response = await CustomerService.createCustomer(customerData);
+                const newCustomer = response.data;
+                setSelectedCustomer(newCustomer);
+                setCustomers([...customers, newCustomer]);
+                setIsCustomerModalOpen(false);
+              } catch (error: any) {
+              }
               ✅ Crear Cliente
             </Button>
           </div>

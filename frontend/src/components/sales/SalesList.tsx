@@ -1,6 +1,4 @@
-// Lista de ventas
 import React, { useState } from "react";
-import { Sale } from "../../types";
 import {
   Plus,
   Search,
@@ -10,82 +8,92 @@ import {
   DollarSign,
   Calendar,
   CreditCard,
+  User,
+  Package
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import { SaleService } from "../../services/saleService";
 
-// Elimina la definición local de Sale, ya que ahora se importa desde types
+interface Sale {
+  id: string;
+  numeroVenta: string;
+  fecha: string;
+  cliente: {
+    nombre: string;
+    apellido: string;
+    email: string;
+  };
+  subtotal: number;
+  impuesto: number;
+  descuento: number;
+  total: number;
+  estado: string;
+  metodoPago: string;
+  cantidadItems: number;
+}
 
 export function SalesList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-
-  // Obtener ventas desde el backend
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    async function fetchSales() {
-      setLoading(true);
-      setError(null);
-      try {
-        // Importa el servicio de ventas
-        const { SaleService } = await import("../../services/saleService");
-        const response = await SaleService.getAllSales();
-        setSales(response.data || []);
-      } catch (err: any) {
-        setError("Error al cargar ventas");
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchSales();
+
+  useEffect(() => {
+    loadSales();
   }, []);
 
-  // Adaptar búsqueda y filtrado usando la estructura real de Sale
+  const loadSales = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await SaleService.getAllSales();
+      setSales(response.data || []);
+    } catch (err: any) {
+      setError("Error al cargar ventas: " + (err.message || "Error desconocido"));
+      console.error("Error loading sales:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
   const filteredSales = sales.filter((sale) => {
-    // sale.customer es un objeto, por lo que usamos sale.customer.firstName y sale.customer.lastName
-    const customerName = `${sale.customer?.firstName ?? ""} ${
-      sale.customer?.lastName ?? ""
-    }`;
+    const customerName = `${sale.cliente?.nombre ?? ""} ${sale.cliente?.apellido ?? ""}`;
     const matchesSearch =
       customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sale.id.toLowerCase().includes(searchTerm.toLowerCase());
+      sale.numeroVenta.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter =
-      filterStatus === "all" || sale.status === filterStatus;
+      filterStatus === "all" || sale.estado.toLowerCase() === filterStatus.toLowerCase();
     return matchesSearch && matchesFilter;
   });
 
-  // Usar createdAt para la fecha
   const today = new Date().toISOString().slice(0, 10);
   const todaysSales = sales.filter(
-    (sale) => sale.createdAt && sale.createdAt.toString().slice(0, 10) === today
+    (sale) => sale.fecha && sale.fecha.slice(0, 10) === today
   );
   const todaysTotal = todaysSales.reduce(
-    (acc, sale) => acc + (sale.total ?? 0),
+    (acc, sale) => acc + sale.total,
     0
   );
 
   const getStatusBadge = (status: string) => {
     const badges = {
-      completed: "bg-green-100 text-green-800",
-      pending: "bg-yellow-100 text-yellow-800",
-      cancelled: "bg-red-100 text-red-800",
+      PAGADA: "bg-green-100 text-green-800",
+      PENDIENTE: "bg-yellow-100 text-yellow-800",
+      ANULADA: "bg-red-100 text-red-800",
     };
     const labels = {
-      completed: "Completado",
-      pending: "Pendiente",
-      cancelled: "Cancelado",
+      PAGADA: "Pagada",
+      PENDIENTE: "Pendiente",
+      ANULADA: "Anulada",
     };
     return (
       <span
-        className={`px-2 py-1 rounded-full text-xs font-medium ${
-          badges[status as keyof typeof badges]
-        }`}
+        className={`px-2 py-1 rounded-full text-xs font-medium ${badges[status as keyof typeof badges] || 'bg-gray-100 text-gray-800'}`}
       >
-        {labels[status as keyof typeof labels]}
+        {labels[status as keyof typeof labels] || status}
       </span>
     );
   };
@@ -95,12 +103,34 @@ export function SalesList() {
       case "efectivo":
         return <DollarSign className="w-4 h-4 text-green-600" />;
       case "tarjeta":
+      case "tarjeta_debito":
+      case "tarjeta_credito":
         return <CreditCard className="w-4 h-4 text-blue-600" />;
+      case "yape":
+      case "plin":
+        return <CreditCard className="w-4 h-4 text-purple-600" />;
       default:
         return <CreditCard className="w-4 h-4 text-purple-600" />;
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
+        <span className="ml-3 text-gray-600">Cargando ventas...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-red-500 mb-4">{error}</div>
+        <Button onClick={loadSales}>Reintentar</Button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -163,13 +193,13 @@ export function SalesList() {
         <Card className="p-4">
           <div className="flex items-center">
             <div className="p-2 bg-purple-100 rounded-lg">
-              <CreditCard className="w-6 h-6 text-purple-600" />
+              <Package className="w-6 h-6 text-purple-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">
-                Método Popular
+                Total Ventas
               </p>
-              <p className="text-lg font-bold text-gray-900">Efectivo</p>
+              <p className="text-2xl font-bold text-gray-900">{sales.length}</p>
             </div>
           </div>
         </Card>
@@ -194,9 +224,9 @@ export function SalesList() {
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-yellow-500 focus:border-yellow-500"
               >
                 <option value="all">Todos los estados</option>
-                <option value="completed">Completados</option>
-                <option value="pending">Pendientes</option>
-                <option value="cancelled">Cancelados</option>
+                <option value="pagada">Pagadas</option>
+                <option value="pendiente">Pendientes</option>
+                <option value="anulada">Anuladas</option>
               </select>
               <Button
                 variant="outline"
@@ -220,7 +250,7 @@ export function SalesList() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Venta
+                    Número
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Cliente
@@ -249,47 +279,55 @@ export function SalesList() {
                 {filteredSales.map((sale) => (
                   <tr key={sale.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium text-gray-900">{sale.id}</div>
+                      <div className="font-medium text-gray-900">{sale.numeroVenta}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-gray-900">
-                        {sale.customer
-                          ? `${sale.customer.firstName} ${sale.customer.lastName}`
-                          : ""}
+                        {sale.cliente
+                          ? `${sale.cliente.nombre} ${sale.cliente.apellido}`
+                          : "Cliente no disponible"}
                       </div>
+                      {sale.cliente?.email && (
+                        <div className="text-sm text-gray-500">{sale.cliente.email}</div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-gray-900">
-                        {sale.createdAt
-                          ? new Date(sale.createdAt).toLocaleDateString("es-PE")
-                          : ""}
+                        {sale.fecha
+                          ? new Date(sale.fecha).toLocaleDateString("es-PE")
+                          : "Sin fecha"}
                       </div>
                       <div className="text-sm text-gray-500">
-                        {sale.createdAt
-                          ? new Date(sale.createdAt).toLocaleTimeString("es-PE")
+                        {sale.fecha
+                          ? new Date(sale.fecha).toLocaleTimeString("es-PE")
                           : ""}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-gray-900">
-                        {sale.items ? sale.items.length : 0} productos
+                        {sale.cantidadItems || 0} productos
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="font-bold text-gray-900">
-                        S/ {sale.total ? sale.total.toFixed(2) : "0.00"}
+                        S/ {sale.total.toFixed(2)}
                       </div>
+                      {sale.descuento > 0 && (
+                        <div className="text-sm text-red-500">
+                          Desc: S/ {sale.descuento.toFixed(2)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
-                        {getPaymentMethodIcon(sale.paymentMethod)}
+                        {getPaymentMethodIcon(sale.metodoPago)}
                         <span className="text-gray-900">
-                          {sale.paymentMethod}
+                          {sale.metodoPago}
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(sale.status)}
+                      {getStatusBadge(sale.estado)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex space-x-2">
@@ -317,7 +355,9 @@ export function SalesList() {
               No se encontraron ventas
             </h3>
             <p className="text-gray-500 mb-4">
-              Ajusta los filtros o crea una nueva venta
+              {searchTerm || filterStatus !== "all" 
+                ? "Ajusta los filtros de búsqueda" 
+                : "Comienza registrando tu primera venta"}
             </p>
             <Button>Nueva Venta</Button>
           </CardContent>

@@ -1,7 +1,7 @@
 // Servicio API base configurado para Spring Boot
 import { ApiResponse } from '../types';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
 class ApiService {
   private baseURL: string;
@@ -36,10 +36,23 @@ class ApiService {
 
     try {
       const response = await fetch(url, config);
-      const data = await response.json();
+      
+      // Manejar respuestas vacías
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
 
       if (!response.ok) {
-        throw new Error(data.message || 'Error en la petición');
+        const errorMessage = typeof data === 'object' && data.message 
+          ? data.message 
+          : typeof data === 'string' 
+            ? data 
+            : `Error ${response.status}: ${response.statusText}`;
+        throw new Error(errorMessage);
       }
 
       return data;
